@@ -25,6 +25,18 @@ SMTP_PORT = 587  # 常用端口是587或465
 TO_ADDRESS = '接收者邮箱'
 
 class AnyFileHandler(FileSystemEventHandler):
+    # 这个函数很重要！，为了防止图片还没有完全写入（没有这个函数，可能邮件只发出去半个图片）
+    def wait_for_file_complete(self, filepath, timeout=10):
+        prev_size = -1
+        for _ in range(timeout):
+            current_size = os.path.getsize(filepath)
+            if current_size == prev_size:
+                return True
+            else:
+                prev_size = current_size
+                time.sleep(1)
+        return False  # 超时未完成
+
     def on_any_event(self, event):
         # 输出所有事件和相关路径以帮助调试
         print(f"触发事件：{event.event_type}，路径：{event.src_path}")
@@ -32,7 +44,10 @@ class AnyFileHandler(FileSystemEventHandler):
     def on_created(self, event):
         if not event.is_directory:
             print(f"检测到新文件：{event.src_path}")
-            self.send_email(event.src_path)
+            if self.wait_for_file_complete(event.src_path):
+                self.send_email(event.src_path)
+            else:
+                print(f"文件在指定时间内未完成写入：{event.src_path}")
 
     def send_email(self, filepath):
         msg = EmailMessage()
